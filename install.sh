@@ -58,8 +58,34 @@ if [ ! -d "$TARGET" ]; then
 fi
 
 # Resolve the directory this script lives in, so we can find skill/, hook/,
-# templates/ regardless of where the user runs it from.
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# templates/ regardless of where the user runs it from. When the script is
+# piped through `curl ... | bash`, BASH_SOURCE is empty and there is no local
+# checkout — in that case we fetch the repo into a temp dir and run from there.
+REPO_URL="${AGENTIC_DOCS_REPO:-https://github.com/Coding9GmbH/agentic-docs.git}"
+REPO_REF="${AGENTIC_DOCS_REF:-main}"
+
+SCRIPT_SRC="${BASH_SOURCE[0]:-}"
+if [ -n "$SCRIPT_SRC" ] && [ -f "$SCRIPT_SRC" ]; then
+  SCRIPT_DIR="$( cd "$( dirname "$SCRIPT_SRC" )" && pwd )"
+else
+  SCRIPT_DIR=""
+fi
+
+if [ -z "$SCRIPT_DIR" ] || [ ! -f "$SCRIPT_DIR/skill/SKILL.md" ]; then
+  echo "Fetching agentic-docs assets ($REPO_REF) from $REPO_URL ..."
+  if ! command -v git >/dev/null 2>&1; then
+    echo "error: git is required when running the installer via curl | bash" >&2
+    echo "       (install git, or clone the repo and run ./install.sh locally)" >&2
+    exit 1
+  fi
+  TMP_REPO="$(mktemp -d 2>/dev/null || mktemp -d -t agentic-docs)"
+  trap 'rm -rf "$TMP_REPO"' EXIT
+  git clone --depth 1 --branch "$REPO_REF" "$REPO_URL" "$TMP_REPO" >/dev/null 2>&1 || {
+    echo "error: failed to clone $REPO_URL (ref: $REPO_REF)" >&2
+    exit 1
+  }
+  SCRIPT_DIR="$TMP_REPO"
+fi
 
 # -----------------------------------------------------------------------------
 # Helpers
